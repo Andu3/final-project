@@ -16,6 +16,7 @@ from tensorflow.keras.layers import Flatten
 import tensorflow as tf
 from Models.Helper import *
 from sklearn.model_selection import RandomizedSearchCV
+import keras.backend as K
 
 
 
@@ -45,8 +46,19 @@ def split_sequence(sequence, n_steps):
 def create_regressor_attributes(df, attribute, list_of_prev_t_instants) :
     
     """
-    Ensure that the index is of datetime type
-    Creates features with previous time instant values
+    Function to convert a time series into a supervised learning problem.
+    ...
+
+    Attributes
+    ----------
+    df : Dataframe
+        Dataframe of stock data.
+    attribute : --------------------------------------------------------------------------------------
+        
+    list_of_prev_t_instants : list
+    
+    df : list
+    
     """
         
     list_of_prev_t_instants.sort()
@@ -90,7 +102,7 @@ def find_input_dim(data):
     plt.ylabel('Value', weight='bold', fontsize=14)
     plt.xticks(weight='bold', fontsize=12, rotation=45)
     plt.yticks(weight='bold', fontsize=12)
-    plt.grid(color = 'y', linewidth = 0.5)
+    plt.grid(True)
     
     input_dim = sum([1 for x in acf_djia if x>0.9])
     print("Number of values above 0.9 autocorrelation is: ", input_dim)
@@ -146,15 +158,13 @@ def get_mlp_model(input_dim, hidden_layer_one=50, hidden_layer_two=25,
     # initialize a sequential model and add layer to flatten the
     # input data
     model = Sequential()
-    model.add(Flatten())
+    #model.add(Flatten())
     
-    # add two stacks of FC => RELU => DROPOUT
     model.add(Dense(hidden_layer_one, activation="relu",
         input_dim=input_dim))
     model.add(Dropout(dropout))
     model.add(Dense(hidden_layer_two, activation="relu"))
     model.add(Dropout(dropout))
-    # add a softmax layer on top
     model.add(Dense(1))
     # compile the model
     model.compile(
@@ -183,7 +193,7 @@ def baseline_test(n_iter, input_dim, X_train, y_train, X_valid, y_valid, X_test,
         H = model.fit(x=X_train, y=y_train,
             validation_data=(X_valid, y_valid),
             batch_size=128,
-            epochs=100)
+            epochs=100, verbose=0, shuffle=False)
             # mke predictions on the test set and evaluate it
         
         
@@ -198,6 +208,8 @@ def baseline_test(n_iter, input_dim, X_train, y_train, X_valid, y_valid, X_test,
         baseline_MSE.append(measures[0])
         baseline_MAE.append(measures[1])
         baseline_r2.append(measures[2])
+        
+        K.clear_session()
     
 
     return sum(baseline_MSE)/n_iter, sum(baseline_MAE)/n_iter, sum(baseline_r2)/n_iter
@@ -209,12 +221,12 @@ def optimize_parameters(model, grid, X_train, y_train):
     
     
     
-    #tss = TimeSeriesSplit(n_splits=10)
+    tss = TimeSeriesSplit(n_splits=10)
     
     
     print("[INFO] performing random search...")
-    searcher = RandomizedSearchCV(estimator=model, n_jobs=-1, n_iter=10,
-        param_distributions=grid, scoring="r2")
+    searcher = RandomizedSearchCV(estimator=model, n_jobs=-1, n_iter=10, cv=tss,
+        param_distributions=grid, scoring=("r2", 'neg_mean_squared_error','neg_mean_absolute_error'), refit='neg_mean_squared_error')
     searchResults = searcher.fit(X_train, y_train)
     # summarize grid search information
     bestScore = searchResults.best_score_
@@ -225,173 +237,11 @@ def optimize_parameters(model, grid, X_train, y_train):
     return bestParams
 
 
+#"r2", 'neg_mean_squared_error',
+
 #########################
 
 
 
 
 
-def run_test_suite(input_dim, X_train, y_train):
-    
-    batch_size_epochs = experiment_batch_size_epochs(input_dim, X_train, y_train)
-    batch_size = batch_size_epochs['batch_size']
-    epochs = batch_size_epochs['epochs']
-    
-    lr_momentum = experiment_lr_momentum(input_dim, X_train, y_train, epochs, batch_size)
-    learn_rate =  lr_momentum['learn_rate']
-    momentum =  lr_momentum['momentum']
-    
-    dropout_constraint = experiment_dropout_constraint(input_dim, X_train, y_train, epochs, batch_size, learn_rate, momentum)
-    dropout_rate = dropout_constraint['dropout_rate']
-    weight_constraint = dropout_constraint['weight_constraint']
-
-    
-def experiment_batch_size_epochs(input_dim, X_train, y_train):
-    model = KerasRegressor(build_fn=build_MLP_model, verbose=0, input_dim=input_dim)
-    tss = TimeSeriesSplit(n_splits=10)
-
-    # define the grid search parameters
-    batch_size = [10, 20, 40, 60, 80, 100]
-    epochs = [10, 50, 100]
-    param_grid = dict(batch_size=batch_size, epochs=epochs)
-    grid = GridSearchCV(estimator=model, param_grid=param_grid, n_jobs=-1, cv=tss, scoring='r2')
-    grid_result = grid.fit(X_train, y_train)
-    # summarize results
-    print("Best: %f using %s" % (grid_result.best_score_, grid_result.best_params_))
-    best_fit = grid_result.best_params_
-    means = grid_result.cv_results_['mean_test_score']
-    stds = grid_result.cv_results_['std_test_score']
-    params = grid_result.cv_results_['params']
-    for mean, stdev, param in zip(means, stds, params):
-        print("%f (%f) with: %r" % (mean, stdev, param))
-        
-    return best_fit
-
-
-
-def experiment_lr_momentum(input_dim, X_train, y_train, epochs, batch_size):
-    model = KerasRegressor(build_fn=model_lr_momentum, epochs=epochs, batch_size=batch_size, input_dim=input_dim, verbose=0)
-    tss = TimeSeriesSplit(n_splits=10)
-
-    
-    # define the grid search parameters
-    learn_rate = [0.001, 0.01, 0.1, 0.2, 0.3, 0.4, 0.5]
-    momentum = [0.0, 0.2, 0.4, 0.6, 0.8, 0.9]
-    param_grid = dict(learn_rate=learn_rate, momentum=momentum)
-    grid = GridSearchCV(estimator=model, param_grid=param_grid, n_jobs=-1, cv=tss, scoring='r2', error_score="raise")
-    grid_result = grid.fit(X_train, y_train)
-    # summarize results
-    print("Best: %f using %s" % (grid_result.best_score_, grid_result.best_params_))
-    best_fit = grid_result.best_params_
-    means = grid_result.cv_results_['mean_test_score']
-    stds = grid_result.cv_results_['std_test_score']
-    params = grid_result.cv_results_['params']
-    for mean, stdev, param in zip(means, stds, params):
-        print("%f (%f) with: %r" % (mean, stdev, param))
-        
-    return best_fit
-
-#
-#def experiment_weight_init(input_dim, X_train, y_train, epochs, batch_size, learn_rate, momentum):
-#    model = KerasClassifier(build_fn=create_model, epochs=100, batch_size=10, verbose=0)
-#    # define the grid search parameters
-#    init_mode = ['uniform', 'lecun_uniform', 'normal', 'zero', 'glorot_normal', 'glorot_uniform', 'he_normal', 'he_uniform']
-#    param_grid = dict(init_mode=init_mode)
-#    grid = GridSearchCV(estimator=model, param_grid=param_grid, n_jobs=-1, cv=0)
-#    grid_result = grid.fit(X, Y)
-#    # summarize results
-#    print("Best: %f using %s" % (grid_result.best_score_, grid_result.best_params_))
-#    means = grid_result.cv_results_['mean_test_score']
-#    stds = grid_result.cv_results_['std_test_score']
-#    params = grid_result.cv_results_['params']
-#    for mean, stdev, param in zip(means, stds, params):
-#        print("%f (%f) with: %r" % (mean, stdev, param))
-        
-        
-def experiment_dropout_constraint(input_dim, X_train, y_train, epochs, batch_size, learn_rate, momentum):
-    model = KerasRegressor(build_fn=model_dropout_constraint, epochs=epochs, batch_size=batch_size, input_dim=input_dim, learn_rate = learn_rate, momentum=momentum, verbose=0)
-    tss = TimeSeriesSplit(n_splits=10)
-    
-    # define the grid search parameters
-    weight_constraint = [1, 2, 3, 4, 5]
-    dropout_rate = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
-    param_grid = dict(dropout_rate=dropout_rate, weight_constraint=weight_constraint)
-    grid = GridSearchCV(estimator=model, param_grid=param_grid, n_jobs=-1, cv=tss)
-    grid_result = grid.fit(X_train, y_train)
-    # summarize results
-    print("Best: %f using %s" % (grid_result.best_score_, grid_result.best_params_))
-    best_fit = grid_result.best_params_
-    means = grid_result.cv_results_['mean_test_score']
-    stds = grid_result.cv_results_['std_test_score']
-    params = grid_result.cv_results_['params']
-    for mean, stdev, param in zip(means, stds, params):
-        print("%f (%f) with: %r" % (mean, stdev, param))
-        
-    return best_fit
-        
-        
-################
-
-
-
-
-
-
-
-def model_lr_momentum(input_dim, learn_rate=0.01, momentum=0):
-    # create model
-    model = Sequential()
-    model.add(Dense(input_dim, input_dim=input_dim, activation='relu'))
-    model.add(Dense(input_dim, activation='relu'))
-    model.add(Dense(1))
-    # Compile model
-    optimizer = SGD(lr=learn_rate, momentum=momentum)
-    model.compile(loss='mean_squared_error', optimizer=optimizer, metrics=['mse', 'mae'])
-    return model
-
-
-#def model_weight_init(init_mode='uniform'):
-#    # create model
-#    model = Sequential()
-#    model.add(Dense(input_dim, input_dim=input_dim, kernel_initializer=init_mode, activation='relu'))
-#    model.add(Dense(input_dim, activation='relu'))
-#    model.add(Dense(1))
-#    # Compile model
-#    model.compile(loss='mean_squared_error', optimizer='adam', metrics=['mse', 'mae'])
-#    return model
-    
-
-#def create_model(activation='relu'):
-#	# create model
-#	model = Sequential()
-#	model.add(Dense(12, input_dim=8, kernel_initializer='uniform', activation=activation))
-#	model.add(Dense(1, kernel_initializer='uniform', activation='sigmoid'))
-#	# Compile model
-#	model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
-#	return model
-
-
-def model_dropout_constraint(input_dim, dropout_rate=0.0, weight_constraint=0, learn_rate=0.01, momentum=0):
-    # create model
-    model = Sequential()
-    model.add(Dense(input_dim, input_dim=input_dim, activation='relu', kernel_constraint=maxnorm(weight_constraint)))
-    model.add(Dropout(dropout_rate))
-    model.add(Dense(input_dim, activation='relu'))
-    model.add(Dropout(dropout_rate))
-    model.add(Dense(1))
-    # Compile model
-    optimizer = SGD(lr=learn_rate, momentum=momentum)
-    model.compile(loss='mean_squared_error', optimizer=optimizer, metrics=['mse', 'mae'])
-    return model
-
-def create_model(neurons=1):
-	# create model
-	model = Sequential()
-	model.add(Dense(neurons, input_dim=8, kernel_initializer='uniform', activation='linear', kernel_constraint=maxnorm(4)))
-	model.add(Dropout(0.2))
-	model.add(Dense(1, kernel_initializer='uniform', activation='sigmoid'))
-	# Compile model
-	model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
-	return model
-
-        
