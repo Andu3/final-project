@@ -1,0 +1,8 @@
+pmdarima==1.8.0
+statsmodels==0.12.1
+pandas==1.2.1
+Keras==2.4.3
+numpy==1.19.2
+matplotlib==3.3.2
+tensorflow==2.3.0
+scikit_learn==0.24.2

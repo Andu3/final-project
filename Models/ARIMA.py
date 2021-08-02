@@ -85,9 +85,9 @@ def ARIMA_pred(train_data, test_data, optimal_order):
     model = ARIMA(train_data, order=optimal_order)  
     fitted = model.fit()  
     print(fitted.summary())
-    
+        
     # Forecast
-    fc, se, conf = fitted.forecast(len(test_data), alpha=0.50)
+    fc, se, conf = fitted.forecast(len(test_data), alpha=0.10)
     
     # Make as pandas series
     fc_series = pd.Series(fc, index=test_data.index)

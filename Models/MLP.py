@@ -114,7 +114,7 @@ def build_baseline_model(num_of_input):
     # create model
     model = Sequential()
     model.add(Dense(2, input_dim=num_of_input, activation='relu'))
-    model.add(Dense(1))
+    model.add(Dense(1, activation='linear'))
     # Compile model
     model.compile(loss='mean_squared_error', optimizer='adam')
     return model
@@ -148,11 +148,6 @@ def build_MLP_model (input_dim):
 
 
 
-
-#########################
-#new try
-
-
 def get_mlp_model(input_dim, hidden_layer_one=50, hidden_layer_two=25,
     dropout=0.2, learn_rate=0.01):
     # initialize a sequential model and add layer to flatten the
@@ -165,7 +160,7 @@ def get_mlp_model(input_dim, hidden_layer_one=50, hidden_layer_two=25,
     model.add(Dropout(dropout))
     model.add(Dense(hidden_layer_two, activation="relu"))
     model.add(Dropout(dropout))
-    model.add(Dense(1))
+    model.add(Dense(1, activation='linear'))
     # compile the model
     model.compile(
         optimizer=Adam(learning_rate=learn_rate),
@@ -211,6 +206,7 @@ def baseline_test(n_iter, input_dim, X_train, y_train, X_valid, y_valid, X_test,
         
         K.clear_session()
     
+    
 
     return sum(baseline_MSE)/n_iter, sum(baseline_MAE)/n_iter, sum(baseline_r2)/n_iter
 
@@ -226,20 +222,14 @@ def optimize_parameters(model, grid, X_train, y_train):
     
     print("[INFO] performing random search...")
     searcher = RandomizedSearchCV(estimator=model, n_jobs=-1, n_iter=10, cv=tss,
-        param_distributions=grid, scoring=("r2", 'neg_mean_squared_error','neg_mean_absolute_error'), refit='neg_mean_squared_error')
+        param_distributions=grid, scoring=('neg_mean_squared_error','neg_mean_absolute_error'), refit='neg_mean_squared_error')
     searchResults = searcher.fit(X_train, y_train)
     # summarize grid search information
-    bestScore = searchResults.best_score_
     bestParams = searchResults.best_params_
-    print("[INFO] best score is {:.2f} using {}".format(bestScore,
-    bestParams))
+    print("Best parameters are: {}".format(bestParams))
     
     return bestParams
 
-
-#"r2", 'neg_mean_squared_error',
-
-#########################
 
 
 
