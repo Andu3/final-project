@@ -3,6 +3,7 @@ import statsmodels.tsa.arima.model as sm
 import matplotlib.pyplot as plt
 import pandas as pd
 from statsmodels.tsa.arima_model import ARIMA
+import time
 import warnings
 warnings.filterwarnings('ignore', 'statsmodels.tsa.arima_model.ARMA',
                         FutureWarning)
@@ -79,7 +80,8 @@ def ARIMA_pred(train_data, test_data, optimal_order):
         Optimal order of the ARIMA model, determined by the auto_arima function in the pmdarima library.
    
     """
-    
+    timestamp = time.time()
+
     
     # Build Model
     model = ARIMA(train_data, order=optimal_order)  
@@ -104,6 +106,10 @@ def ARIMA_pred(train_data, test_data, optimal_order):
                      color='k', alpha=0.15)
     plt.title('Forecast vs Actuals')
     plt.legend(loc='upper left', fontsize=8)
+    
+    plt.savefig('Reports/{}.png'.format(timestamp))
+
+    
     plt.show()
     
-    return fc, fc_series
+    return fc

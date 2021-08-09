@@ -1,34 +1,70 @@
-
+from Models.Misc import *
 from sklearn.metrics import mean_absolute_error
-from Models.Helper import *
+from keras.models import Sequential
+from keras.layers import Dense
+from keras.layers import Dropout
+from tensorflow.keras.optimizers import Adam
 
 
 
-def hybrid_average(ARIMA_forecast, MLP_forecast):
-
-    average = [sum(x)/2 for x in zip(ARIMA_forecast, MLP_forecast)]
-
-    return average
-
-
-def weighted_average(ARIMA_forecast, MLP_forecast, y_test):
-      
-    arima_mae = mean_absolute_error(y_test, ARIMA_forecast)
-    mlp_mae = mean_absolute_error(y_test, MLP_forecast)
+def forecast_HMLP_residuals(input_dim_hybrid, X_train, y_train, X_valid, y_valid, X_test):
     
+    """
+    Function to build the HMLP and forecast the residuals.
+    ...
+
+    Attributes
+    ----------
+    input_dim_hybrid: int
+        Dimension of the input layer for the HMLP.
+    X_train: list
+    y_train: list
+    X_valid: list
+    y_valid: list
+    X_test: list
     
-    total_mae = arima_mae + mlp_mae
-        
-    mlp_weight = arima_mae/total_mae
-    arima_weight = mlp_mae/total_mae   
+    """
+    #
+    ## define model
+    model = Sequential()
+    model.add(Dense(input_dim_hybrid, activation='tanh', input_dim=input_dim_hybrid))
+    model.add(Dense(input_dim_hybrid/2, activation='tanh'))
+    model.add(Dropout(0.5))
+    model.add(Dense(1, activation='linear'))
+    model.compile(
+            optimizer=Adam(learning_rate=0.01),
+            loss="mean_squared_error",
+            metrics=["mse", "mae"])
     
-    weighted_arima_pred = [x*arima_weight for x in ARIMA_forecast]
-    weighted_mlp_pred = [x*mlp_weight for x in MLP_forecast]
+    model.summary()
     
+    history_hybrid = model.fit(X_train, y_train,
+                               validation_data=(X_valid, y_valid),
+                               batch_size=32,
+                               epochs=100, verbose=False)
     
-    weighted_average = [sum(x) for x in zip(weighted_arima_pred, weighted_mlp_pred)]
-        
-    print("Weight for ARIMA: ", arima_weight)
-    print("Weight for MLP: ", mlp_weight)
+    pred_HMLP = model.predict(X_test)
     
-    return weighted_average
+    return pred_HMLP, history_hybrid
+
+
+def zero_centre(prediction):
+    
+    """
+    Function to zero center the hybrid prediction.
+    ...
+
+    Attributes
+    ----------
+    prediction : list
+    
+    """
+    
+    if prediction[0] < 0:
+        prediction = [abs(prediction[0])+i for i in prediction]
+    if prediction[0] > 0:
+        prediction = [i-prediction[0] for i in prediction]
+    else:
+        return prediction
+    return prediction
+

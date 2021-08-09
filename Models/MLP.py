@@ -14,7 +14,7 @@ from keras.layers import Dropout
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.layers import Flatten
 import tensorflow as tf
-from Models.Helper import *
+from Models.Misc import *
 from sklearn.model_selection import RandomizedSearchCV
 import keras.backend as K
 
@@ -27,22 +27,6 @@ tf.random.set_seed(123)
 
 
 
-# split a univariate sequence into samples
-def split_sequence(sequence, n_steps):
-    X, y = list(), list()
-    for i in range(len(sequence)):
-        # find the end of this pattern
-        end_ix = i + n_steps
-        # check if we are beyond the sequence
-        if end_ix > len(sequence)-1:
-            break
-        # gather input and output parts of the pattern
-        seq_x, seq_y = sequence[i:end_ix], sequence[end_ix]
-        X.append(seq_x)
-        y.append(seq_y)
-    return np.array(X), np.array(y)
-
-
 def create_regressor_attributes(df, attribute, list_of_prev_t_instants) :
     
     """
@@ -53,8 +37,8 @@ def create_regressor_attributes(df, attribute, list_of_prev_t_instants) :
     ----------
     df : Dataframe
         Dataframe of stock data.
-    attribute : --------------------------------------------------------------------------------------
-        
+    attribute : list
+        List of columns used for creating the supervised learning problem. 
     list_of_prev_t_instants : list
     
     df : list
@@ -88,6 +72,16 @@ def create_regressor_attributes(df, attribute, list_of_prev_t_instants) :
 
 def find_input_dim(data):
     
+    """
+    Function to find the number of terms above 0.9 autocorrelation in a data set.
+    ...
+
+    Attributes
+    ----------
+    data : list, Dataframe
+    
+    """
+    
     acf_djia, confint_djia, qstat_djia, pvalues_djia = stattools.acf(data,
                                                                  adjusted=True,
                                                                  nlags=500,
@@ -111,6 +105,18 @@ def find_input_dim(data):
 
 
 def build_baseline_model(num_of_input):
+    
+    """
+    Function to build the baseline model.
+    ...
+
+    Attributes
+    ----------
+    num_of_input : int
+        Dimension of the input layer.
+    
+    """
+    
     # create model
     model = Sequential()
     model.add(Dense(2, input_dim=num_of_input, activation='relu'))
@@ -120,36 +126,28 @@ def build_baseline_model(num_of_input):
     return model
 
 
-def build_big_model (input_dim):
-    
-    # define model
-    model = Sequential()
-    model.add(Dense(input_dim, activation='relu', input_dim=input_dim))
-    model.add(Dense(input_dim, activation='relu'))
-    model.add(Dense(input_dim, activation='relu'))
-    model.add(Dense(input_dim, activation='relu'))
-    model.add(Dense(1))
-    model.compile(optimizer='adam', loss='mse', metrics=['mse', 'mae'])
-    
-    model.summary()
-    return model
-
-def build_MLP_model (input_dim):
-    
-    # define model
-    model = Sequential()
-    model.add(Dense(input_dim, activation='relu', input_dim=input_dim))
-    model.add(Dense(input_dim, activation='relu'))
-    model.add(Dense(1))
-    model.compile(loss='mean_squared_error', optimizer='adam', metrics=['mse', 'mae'])
-    
-    model.summary()
-    return model
-
-
-
 def get_mlp_model(input_dim, hidden_layer_one=50, hidden_layer_two=25,
     dropout=0.2, learn_rate=0.01):
+    
+    """
+    Function to build the MLP model. The parameters of the model will be optimised by the optimize_parameters() function.
+    ...
+
+    Attributes
+    ----------
+    input_dim: int
+        Dimension of the input layer.
+    hidden_layer_one: int
+        Size of the first hidden layer. Default value = 50.
+    hidden_layer_two: int
+        Size of the second hidden layer. Default value = 25.
+    dropout: float
+        Rate of dropout of the dropout layer. Default value = 0.2.
+    learn_rate: float
+        Amount of learning rate. Default value = 0.01.
+        
+    """
+    
     # initialize a sequential model and add layer to flatten the
     # input data
     model = Sequential()
@@ -175,10 +173,29 @@ def get_mlp_model(input_dim, hidden_layer_one=50, hidden_layer_two=25,
     
 def baseline_test(n_iter, input_dim, X_train, y_train, X_valid, y_valid, X_test, y_test, scaler):
     
+    
+    """
+    Function to fit the baseline model and make prediction for n_iter amount of times.
+    ...
+
+    Attributes
+    ----------
+    n_iter: int
+        Number of times the baseline test is ran.
+    input_dim: int
+        Dimension of the input layer.
+    X_train: list
+    y_train: list
+    X_valid: list
+    y_valid: list
+    X_test: list
+    y_test: list
+    scaler: Scaler object
+    
+    """
         
     baseline_MSE=[]
     baseline_MAE=[]
-    baseline_r2=[]
         
     
     for i in range(n_iter):
@@ -196,26 +213,38 @@ def baseline_test(n_iter, input_dim, X_train, y_train, X_valid, y_valid, X_test,
         baseline_pred_rescaled = scaler.inverse_transform(baseline_pred)
         
         
-        plot_comparison_graph(y_test, baseline_pred_rescaled)
-        plot_loss(H)
+        #plot_comparison_graph(y_test, baseline_pred_rescaled)
+        #plot_loss(H)
         
         measures = calculate_error_measures(y_test, baseline_pred_rescaled)
         baseline_MSE.append(measures[0])
         baseline_MAE.append(measures[1])
-        baseline_r2.append(measures[2])
         
         K.clear_session()
     
     
 
-    return sum(baseline_MSE)/n_iter, sum(baseline_MAE)/n_iter, sum(baseline_r2)/n_iter
+    return sum(baseline_MSE)/n_iter, sum(baseline_MAE)/n_iter
 
 
 
 
 def optimize_parameters(model, grid, X_train, y_train):
     
-    
+    """
+    Function to optimise the MLP hyperparameters using RandomizedSearchCV. 
+    ...
+
+    Attributes
+    ----------
+    model: KerasRegressor object
+        The model to be optimised. Wrapped in a KerasRegressor object for compatibility with the sklearn library.
+    grid: dictionary
+        Dictionary of list with the hyperparameter values used for optimisation.
+    X_train: list
+    y_train: list
+        
+    """
     
     tss = TimeSeriesSplit(n_splits=10)
     
@@ -223,12 +252,11 @@ def optimize_parameters(model, grid, X_train, y_train):
     print("[INFO] performing random search...")
     searcher = RandomizedSearchCV(estimator=model, n_jobs=-1, n_iter=10, cv=tss,
         param_distributions=grid, scoring=('neg_mean_squared_error','neg_mean_absolute_error'), refit='neg_mean_squared_error')
-    searchResults = searcher.fit(X_train, y_train)
-    # summarize grid search information
-    bestParams = searchResults.best_params_
-    print("Best parameters are: {}".format(bestParams))
+    search_results = searcher.fit(X_train, y_train)
+    best_params = search_results.best_params_
+    print("Best parameters are: {}".format(best_params))
     
-    return bestParams
+    return best_params
 
 
 
